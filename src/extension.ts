@@ -79,8 +79,10 @@ export function activate(context: vscode.ExtensionContext) {
         if (item.type === 'file') {
           const doc = await vscode.workspace.openTextDocument(uri);
           await vscode.window.showTextDocument(doc);
+        } else {
+          await vscode.commands.executeCommand('revealInExplorer', uri);
+          await vscode.commands.executeCommand('list.expand');
         }
-        await vscode.commands.executeCommand('revealInExplorer', uri);
       } catch {}
     })
   );
