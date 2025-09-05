@@ -24,7 +24,8 @@
         {
           "id": "favorites",
           "name": "Favorites",
-          "when": "true"
+          "when": "true",
+          "icon": "$(star-full)"
         }
       ]
     },
