@@ -1,10 +1,21 @@
 {
   "name": "vscode-explorer-favorites",
-  "displayName": "VSCode Explorer Favorites",
-  "description": "Add files and folders to favorites in Explorer sidebar",
+  "displayName": "Explorer Favorites",
+  "description": "Add files and folders to favorites for quick access in the Explorer sidebar",
   "version": "0.0.1",
+  "publisher": "vladstudio",
   "engines": { "vscode": "^1.74.0" },
   "categories": ["Other"],
+  "keywords": ["favorites", "explorer", "bookmarks", "quick access", "sidebar"],
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vladstudio/vscode-explorer-favorites.git"
+  },
+  "homepage": "https://github.com/vladstudio/vscode-explorer-favorites",
+  "bugs": {
+    "url": "https://github.com/vladstudio/vscode-explorer-favorites/issues"
+  },
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
