@@ -2,14 +2,15 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 interface FavoriteItem {
-  uri: vscode.Uri;
+  uri: string;
   type: 'file' | 'folder';
 }
 
 class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<FavoriteItem | undefined>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-  private favorites: FavoriteItem[] = [];
+  private favorites = new Set<string>();
+  private items: FavoriteItem[] = [];
 
   constructor(private context: vscode.ExtensionContext) {
     this.loadFavorites();
@@ -18,34 +19,38 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem> {
   refresh() { this._onDidChangeTreeData.fire(undefined); }
 
   private loadFavorites() {
-    const saved = this.context.globalState.get<FavoriteItem[]>('favorites', []);
-    this.favorites = saved;
+    this.items = this.context.globalState.get<FavoriteItem[]>('favorites', []);
+    this.favorites = new Set(this.items.map(f => f.uri));
   }
 
   private saveFavorites() {
-    this.context.globalState.update('favorites', this.favorites);
+    this.context.globalState.update('favorites', this.items);
   }
 
   getTreeItem(element: FavoriteItem): vscode.TreeItem {
-    const item = new vscode.TreeItem(path.basename(element.uri.fsPath), vscode.TreeItemCollapsibleState.None);
-    item.resourceUri = element.uri;
+    const uri = vscode.Uri.parse(element.uri);
+    const item = new vscode.TreeItem(path.basename(uri.fsPath), vscode.TreeItemCollapsibleState.None);
+    item.resourceUri = uri;
     item.contextValue = 'favorite';
     item.command = { command: 'favorites.open', title: 'Open', arguments: [element] };
     return item;
   }
 
-  getChildren(): FavoriteItem[] { return this.favorites; }
+  getChildren(): FavoriteItem[] { return this.items; }
 
   add(uri: vscode.Uri, type: 'file' | 'folder') {
-    if (!this.favorites.find(f => f.uri.fsPath === uri.fsPath)) {
-      this.favorites.push({ uri, type });
+    const uriString = uri.toString();
+    if (!this.favorites.has(uriString)) {
+      this.favorites.add(uriString);
+      this.items.push({ uri: uriString, type });
       this.saveFavorites();
       this.refresh();
     }
   }
 
   remove(item: FavoriteItem) {
-    this.favorites = this.favorites.filter(f => f.uri.fsPath !== item.uri.fsPath);
+    this.favorites.delete(item.uri);
+    this.items = this.items.filter(f => f.uri !== item.uri);
     this.saveFavorites();
     this.refresh();
   }
@@ -57,8 +62,11 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('favorites.add', async (uri: vscode.Uri) => {
-      const stat = await vscode.workspace.fs.stat(uri);
-      provider.add(uri, stat.type === vscode.FileType.Directory ? 'folder' : 'file');
+      try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        const type = stat.type & vscode.FileType.Directory ? 'folder' : 'file';
+        provider.add(uri, type);
+      } catch {}
     }),
 
     vscode.commands.registerCommand('favorites.remove', (item: FavoriteItem) => {
@@ -66,13 +74,14 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     vscode.commands.registerCommand('favorites.open', async (item: FavoriteItem) => {
-      if (item.type === 'file') {
-        const doc = await vscode.workspace.openTextDocument(item.uri);
-        await vscode.window.showTextDocument(doc);
-        await vscode.commands.executeCommand('revealInExplorer', item.uri);
-      } else {
-        await vscode.commands.executeCommand('revealInExplorer', item.uri);
-      }
+      try {
+        const uri = vscode.Uri.parse(item.uri);
+        if (item.type === 'file') {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await vscode.window.showTextDocument(doc);
+        }
+        await vscode.commands.executeCommand('revealInExplorer', uri);
+      } catch {}
     })
   );
 }
