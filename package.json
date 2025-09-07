@@ -2,7 +2,7 @@
   "name": "vscode-explorer-favorites",
   "displayName": "Explorer Favorites",
   "description": "Add files and folders to favorites for quick access in the Explorer sidebar",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "vladstudio",
   "engines": {
     "vscode": "^1.74.0"
