@@ -58,6 +58,18 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem> {
     item.resourceUri = uri;
     item.contextValue = 'favorite';
     item.command = { command: 'favorites.open', title: 'Open', arguments: [element] };
+    
+    
+    // Add relative path as description
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    if (workspaceFolder) {
+      const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
+      const parentDir = path.dirname(relativePath);
+      if (parentDir && parentDir !== '.') {
+        item.description = parentDir;
+      }
+    }
+    
     return item;
   }
 
