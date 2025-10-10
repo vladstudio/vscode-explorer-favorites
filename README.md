@@ -4,6 +4,7 @@
 - Select "Add to Favorites"
 - View your favorites in the "Favorites" section of the Explorer sidebar
 - Click on any favorite to open it
+- Use "Open Favorites" command (assignable to keyboard shortcut) to quickly access favorites via quick pick
 - Remove favorites by clicking the "×" icon next to any item
 
 ## Requirements

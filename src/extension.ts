@@ -55,28 +55,27 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem>, vscode
     this.context.globalState.update(key, items);
   }
 
+  getDescription(uri: vscode.Uri): string {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+    if (workspaceFolder) {
+      const parentDir = path.dirname(path.relative(workspaceFolder.uri.fsPath, uri.fsPath));
+      if (parentDir && parentDir !== '.') return parentDir;
+    }
+    return '';
+  }
+
   getTreeItem(element: FavoriteItem): vscode.TreeItem {
     const uri = vscode.Uri.parse(element.uri);
     const item = new vscode.TreeItem(path.basename(uri.fsPath), vscode.TreeItemCollapsibleState.None);
     item.contextValue = 'favorite';
     item.command = { command: 'favorites.open', title: 'Open', arguments: [element] };
     item.resourceUri = uri;
-    
-    // Add relative path as description
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    if (workspaceFolder) {
-      const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
-      const parentDir = path.dirname(relativePath);
-      if (parentDir && parentDir !== '.') {
-        item.description = parentDir;
-      }
-    }
-    
+    item.description = this.getDescription(uri);
     return item;
   }
 
-  getChildren(): FavoriteItem[] { 
-    return this.items.sort((a, b) => (a.order || 0) - (b.order || 0)); 
+  getChildren(): FavoriteItem[] {
+    return this.items.sort((a, b) => (a.order || 0) - (b.order || 0));
   }
 
   add(uri: vscode.Uri, type: 'file' | 'folder') {
@@ -184,6 +183,24 @@ export function activate(context: vscode.ExtensionContext) {
           await vscode.commands.executeCommand('list.expand');
         }
       } catch {}
+    }),
+
+    vscode.commands.registerCommand('favorites.openQuickPick', async () => {
+      const favorites = provider.getChildren();
+      if (!favorites.length) {
+        vscode.window.showInformationMessage('No favorites added yet');
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        favorites.map(fav => {
+          const uri = vscode.Uri.parse(fav.uri);
+          return { label: path.basename(uri.fsPath), description: provider.getDescription(uri), favorite: fav };
+        }),
+        { placeHolder: 'Select a favorite to open', matchOnDescription: true }
+      );
+
+      if (selected) await vscode.commands.executeCommand('favorites.open', selected.favorite);
     })
   );
 }

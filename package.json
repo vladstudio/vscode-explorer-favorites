@@ -48,6 +48,10 @@
         "command": "favorites.remove",
         "title": "Remove from Favorites",
         "icon": "$(close)"
+      },
+      {
+        "command": "favorites.openQuickPick",
+        "title": "Open Favorites"
       }
     ],
     "menus": {
