@@ -1,8 +1,15 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 interface FavoriteItem {
   uri: string;
+  type: 'file' | 'folder';
+  order?: number;
+}
+
+interface StoredFavoriteItem {
+  relativePath: string;
   type: 'file' | 'folder';
   order?: number;
 }
@@ -19,12 +26,22 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem>, vscode
     this.loadFavorites();
   }
 
-  private getWorkspaceKey(folderUri?: string): string {
-    if (folderUri) {
-      return `favorites_${folderUri}`;
+  private getGitRepoId(folderPath: string): string | undefined {
+    try {
+      const commonDir = execSync('git rev-parse --git-common-dir', {
+        cwd: folderPath,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+      return path.resolve(folderPath, commonDir);
+    } catch {
+      return undefined;
     }
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    return workspaceFolder ? `favorites_${workspaceFolder.uri.fsPath}` : 'favorites_global';
+  }
+
+  private getStorageKey(folderPath: string): string {
+    const gitId = this.getGitRepoId(folderPath);
+    return gitId ? `favorites_git_${gitId}` : `favorites_${folderPath}`;
   }
 
   private getRelevantWorkspaceFolder(uri: vscode.Uri): vscode.WorkspaceFolder | undefined {
@@ -33,26 +50,70 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem>, vscode
 
   refresh() { this._onDidChangeTreeData.fire(undefined); }
 
+  private toRelativePath(uriString: string, workspaceRoot: string): string {
+    const uri = vscode.Uri.parse(uriString);
+    return path.relative(workspaceRoot, uri.fsPath);
+  }
+
+  private toAbsoluteUri(relativePath: string, workspaceRoot: string): string {
+    return vscode.Uri.file(path.resolve(workspaceRoot, relativePath)).toString();
+  }
+
   private loadFavorites() {
     this.items = [];
     this.favorites = new Set();
 
     if (vscode.workspace.workspaceFolders) {
+      const loadedKeys = new Set<string>();
       for (const folder of vscode.workspace.workspaceFolders) {
-        const key = this.getWorkspaceKey(folder.uri.fsPath);
-        const folderFavorites = this.context.globalState.get<FavoriteItem[]>(key, []);
-        this.items.push(...folderFavorites);
-        folderFavorites.forEach(f => this.favorites.add(f.uri));
+        const folderPath = folder.uri.fsPath;
+        const key = this.getStorageKey(folderPath);
+
+        if (loadedKeys.has(key)) continue;
+        loadedKeys.add(key);
+
+        let stored = this.context.globalState.get<any[]>(key, []);
+
+        // Migrate from legacy key (absolute-path-based) if new key is empty
+        if (!stored.length) {
+          const legacyKey = `favorites_${folderPath}`;
+          if (legacyKey !== key) {
+            const legacyItems = this.context.globalState.get<any[]>(legacyKey, []);
+            if (legacyItems.length) {
+              const converted: StoredFavoriteItem[] = legacyItems.map((item: any) => ({
+                relativePath: this.toRelativePath(item.uri, folderPath),
+                type: item.type,
+                order: item.order
+              }));
+              this.context.globalState.update(key, converted);
+              this.context.globalState.update(legacyKey, undefined);
+              stored = converted;
+            }
+          }
+        }
+
+        for (const item of stored) {
+          const favItem: FavoriteItem = 'relativePath' in item
+            ? { uri: this.toAbsoluteUri(item.relativePath, folderPath), type: item.type, order: item.order }
+            : item as FavoriteItem;
+          this.items.push(favItem);
+          this.favorites.add(favItem.uri);
+        }
       }
     } else {
-      this.items = this.context.globalState.get<FavoriteItem[]>(this.getWorkspaceKey(), []);
+      this.items = this.context.globalState.get<FavoriteItem[]>('favorites_global', []);
       this.favorites = new Set(this.items.map(f => f.uri));
     }
   }
 
   private saveFavorites(folderPath: string, items: FavoriteItem[]) {
-    const key = this.getWorkspaceKey(folderPath);
-    this.context.globalState.update(key, items);
+    const key = this.getStorageKey(folderPath);
+    const stored: StoredFavoriteItem[] = items.map(item => ({
+      relativePath: this.toRelativePath(item.uri, folderPath),
+      type: item.type,
+      order: item.order
+    }));
+    this.context.globalState.update(key, stored);
   }
 
   getDescription(uri: vscode.Uri): string {
@@ -84,15 +145,17 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem>, vscode
       const folder = this.getRelevantWorkspaceFolder(uri);
       const maxOrder = Math.max(0, ...this.items.map(i => i.order || 0));
       const newItem = { uri: uriString, type, order: maxOrder + 1 };
-      
+
       if (folder) {
         const folderPath = folder.uri.fsPath;
-        const key = this.getWorkspaceKey(folderPath);
-        const folderItems = this.context.globalState.get<FavoriteItem[]>(key, []);
+        const folderItems = this.items.filter(i => {
+          const itemFolder = this.getRelevantWorkspaceFolder(vscode.Uri.parse(i.uri));
+          return itemFolder?.uri.fsPath === folderPath;
+        });
         folderItems.push(newItem);
         this.saveFavorites(folderPath, folderItems);
       }
-      
+
       this.favorites.add(uriString);
       this.items.push(newItem);
       this.refresh();
@@ -104,12 +167,15 @@ class FavoritesProvider implements vscode.TreeDataProvider<FavoriteItem>, vscode
     const folder = this.getRelevantWorkspaceFolder(uri);
     if (folder) {
       const folderPath = folder.uri.fsPath;
-      const key = this.getWorkspaceKey(folderPath);
-      const folderItems = this.context.globalState.get<FavoriteItem[]>(key, []);
-      const updatedItems = folderItems.filter(f => f.uri !== item.uri);
-      this.saveFavorites(folderPath, updatedItems);
+      const folderItems = this.items
+        .filter(i => i.uri !== item.uri)
+        .filter(i => {
+          const itemFolder = this.getRelevantWorkspaceFolder(vscode.Uri.parse(i.uri));
+          return itemFolder?.uri.fsPath === folderPath;
+        });
+      this.saveFavorites(folderPath, folderItems);
     }
-    
+
     this.favorites.delete(item.uri);
     this.items = this.items.filter(f => f.uri !== item.uri);
     this.refresh();

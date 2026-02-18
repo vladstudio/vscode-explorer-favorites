@@ -6,6 +6,8 @@
 - Click on any favorite to open it
 - Use "Open Favorites" command (assignable to keyboard shortcut) to quickly access favorites via quick pick
 - Remove favorites by clicking the "×" icon next to any item
+- Drag and drop to reorder favorites
+- Favorites are shared across Git worktrees of the same repository
 
 ## Requirements
 
