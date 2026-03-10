@@ -72,7 +72,8 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "release": "npm version patch && vsce publish && ovsx publish"
   },
   "devDependencies": {
     "@types/node": "16.x",
